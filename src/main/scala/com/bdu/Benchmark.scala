@@ -3,8 +3,20 @@ package com.bdu
 import org.apache.spark.sql.SQLContext
 import org.apache.spark.{SparkContext, SparkConf}
 
+
+
 /**
  * Created by eric on 8/11/16.
+ * Spark is already pretty fast, but can we push the boundary and make Spark 10X faster?
+ * Spark 2.0 ships with the second generation Tungsten engine. This engine builds
+ * upon ideas from modern compilers and MPP
+ * databases and applies them to Spark workloads. The main idea is to emit
+ * optimized code at runtime that collapses the entire
+ * query into a single function, eliminating virtual function calls and leveraging
+ * CPU registers for intermediate data. We
+ * all this technique “whole-stage code generation.”
+ *
+ * spark.sql.codegen.wholeStage = true
  */
 object Benchmark {
 
@@ -27,7 +39,7 @@ object Benchmark {
     sc.setLogLevel("ERROR")
     //val spark = new SQLContext(sc)
 
-    import spark.implicits._
+    //import spark.implicits._
 
     println(s"spark version : " + sc.version)
 

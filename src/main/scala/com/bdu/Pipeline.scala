@@ -13,6 +13,16 @@ import scala.io.Source
 
 /**
  * Created by Eric on 8/11/16.
+ *
+ *  We built an pipleline for Spark ML to detect SpamSMS,
+ *
+ *  During this model tainning, we treat the Pipeline as an Estimator, wrapping it in
+ *  CrossValidator instance. This will allow us to jointly choose parameters for all Pipeline stages.
+ *  A CrossValidator requires an Estimator, a set of Estimator ParamMaps, and an Evaluator.
+ *  We use a ParamGridBuilder to construct a grid of parameters to search over.
+ *  With 3 values for word2vec.vectorSize and 3 values for lr.regParam,
+ *  this grid will have 3 x 3 = 9 parameter settings for CrossValidator to choose from 9 x NumFolds
+ *
  */
 
 object Pipeline {
@@ -29,10 +39,12 @@ object Pipeline {
    */
   final val TRAIN_DATA = "resource/SMSSpamCollection.csv"
 
+  var model: CrossValidatorModel = null
+
   def main(args: Array[String]): Unit = {
 
     println("初始化SQLContext")
-    val conf = new SparkConf().setAppName("CrossValidation Pipeline").setMaster("local[*]") //Using 2 core running on local
+    val conf = new SparkConf().setAppName("CrossValidation Pipeline").setMaster("local[2]") //Using 2 core running on local
 
     val sc = new SparkContext(conf)
     sc.setLogLevel("ERROR")
@@ -85,32 +97,40 @@ object Pipeline {
         this grid will have 3 x 3 = 9 parameter settings for CrossValidator to choose from.
     */
     val paramGrid = new ParamGridBuilder()
-      .addGrid(word2vec.vectorSize, Array(50, 200))
+      .addGrid(word2vec.vectorSize, Array(50, 100, 200))
       .addGrid(lr.regParam, Array(0.00001, 0.001, 0.1))
       .build()
 
-    println("训练模型(包括Word2Vec特征抽取和LR分类模型)")
+    println("训练模型(包括Word2Vec特征抽取和LR分类模型)\n")
 
     val cv = new CrossValidator()
       .setEstimator(pipeline)
       .setEvaluator(new BinaryClassificationEvaluator())
       .setEstimatorParamMaps(paramGrid)
-      .setNumFolds(2)
+      .setNumFolds(5)
 
+    println(cv.explainParams())
 
+    benchmark("cross validation") {
 
-//    benchmark("cross validation") {
+      sqlContext.setConf("spark.sql.codegen.wholeStage", "true")
+
+      model = cv.fit(train)
+
+    }
+
+    //val  model = cv.fit(train)
+
+//    println(model.bestModel)
 //
-//      sqlContext.setConf("spark.sql.codegen.wholeStage", "true")
-//
-//      val m = cv.fit(train)
-//      println(m.bestModel.params)
-//
-//    }
+//    print(model.extractParamMap())
 
-    val  model = cv.fit(train)
+    val params = model.getEstimatorParamMaps
+      .zip(model.avgMetrics)
+      .maxBy(_._2)
+      ._1
 
-    println(model.bestModel)
+    println(params)
 
     println("评估模型结果:使用AUC指标")
     /*
@@ -122,7 +142,7 @@ object Pipeline {
     val evaluator = new BinaryClassificationEvaluator()
     println(s"test metrics: ${evaluator.evaluate(testResult)}")
 
-    println("评估模型结果:负样本与正样本准确率")
+    println("\n评估模型结果:负样本与正样本准确率")
 
     val negPrecision = precision(model, negTest)
     println(s"negative-precision = $negPrecision")
@@ -155,11 +175,13 @@ object Pipeline {
     corrects.asInstanceOf[Double] / total
   }
 
-  def benchmark(name: String)(f: => Unit )  {
+  def benchmark(name: String)(f: => Unit )  = {
     val startTime = System.nanoTime
     f
     val endTime = System.nanoTime
     println(s"Time taken in $name: " + (endTime - startTime).toDouble / 1000000000 + " seconds")
+
+
   }
 
 }
