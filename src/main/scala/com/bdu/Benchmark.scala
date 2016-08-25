@@ -61,6 +61,7 @@ object Benchmark {
 
     benchmark("Spark 2.0 sum(id)") {
       spark.range(1000L * 1000 * 1000).selectExpr("sum(id)").show()
+      print(spark.range(1000L * 1000 * 1000).stat)
     }
 
     benchmark("Spark 2.0 join()") {
